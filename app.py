@@ -8,8 +8,6 @@ import io
 import json
 import re
 import sys
-import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
 from multiprocessing import Process, Queue, freeze_support
 from logging.handlers import QueueHandler
 import webbrowser
@@ -20,8 +18,6 @@ import hashlib
 from waitress import serve
 from PIL import Image
 from flask import Flask, request, jsonify, send_from_directory
-
-import customtkinter as ctk
 
 # ==============================================================================
 # PART 1: FLASK SERVER LOGIC
@@ -378,137 +374,6 @@ def run_flask_app(config, log_queue=None):
     else: logging.info(" - Could not determine local network IP.")
     serve(app, host='0.0.0.0', port=port, _quiet=True)
 
-# ===================================================================
-# PART 2: GRAPHICAL USER INTERFACE (GUI) WITH CUSTOMTKINTER
-# ===================================================================
-
-def center_window(window, width, height):
-    screen_width, screen_height = window.winfo_screenwidth(), window.winfo_screenheight()
-    x, y = (screen_width // 2) - (width // 2), (screen_height // 2) - (height // 2)
-    window.geometry(f'{width}x{height}+{x}+{y}')
-
-class AppGUI(ctk.CTk):
-    def __init__(self):
-        super().__init__()
-        self.title("PS5 PKG Server Control Panel")
-        ctk.set_appearance_mode("dark"); ctk.set_default_color_theme("blue")
-        self.server_process, self.log_queue = None, Queue()
-        self.grid_columnconfigure(0, weight=1); self.grid_rowconfigure(3, weight=1)
-        self.create_widgets()
-        self.style_treeview()
-        self.load_config_to_gui()
-        center_window(self, 850, 700)
-        self.resizable(False, False)
-        self.protocol("WM_DELETE_WINDOW", self.on_closing)
-        self.process_log_queue()
-
-    def create_widgets(self):
-        settings_frame = ctk.CTkFrame(self); settings_frame.grid(row=0, column=0, padx=10, pady=(10, 5), sticky="ew")
-        settings_frame.grid_columnconfigure(1, weight=1)
-        ctk.CTkLabel(settings_frame, text="Shop Title:").grid(row=0, column=0, padx=10, pady=5, sticky="w")
-        self.shop_title_var = tk.StringVar(); ctk.CTkEntry(settings_frame, textvariable=self.shop_title_var).grid(row=0, column=1, padx=10, pady=5, sticky="ew")
-        ctk.CTkLabel(settings_frame, text="Server Port:").grid(row=1, column=0, padx=10, pady=5, sticky="w")
-        self.port_var = tk.StringVar(); ctk.CTkEntry(settings_frame, textvariable=self.port_var).grid(row=1, column=1, padx=10, pady=5, sticky="ew")
-        self.scan_on_startup_var = tk.BooleanVar(); ctk.CTkCheckBox(settings_frame, text="Scan on Startup (requires server restart)", variable=self.scan_on_startup_var).grid(row=2, column=0, columnspan=2, padx=10, pady=10, sticky="w")
-        self.save_settings_btn = ctk.CTkButton(settings_frame, text="Save Settings", command=self.save_gui_config); self.save_settings_btn.grid(row=3, column=0, columnspan=2, padx=10, pady=10, sticky="ew")
-        paths_frame = ctk.CTkFrame(self); paths_frame.grid(row=1, column=0, padx=10, pady=5, sticky="ew")
-        paths_frame.grid_columnconfigure(0, weight=1)
-        ctk.CTkLabel(paths_frame, text="PKG Paths (Categories)", font=("Segoe UI", 12, "bold")).grid(row=0, column=0, columnspan=2, padx=10, pady=(5,0), sticky="w")
-        tree_frame = ctk.CTkFrame(paths_frame, fg_color="transparent"); tree_frame.grid(row=1, column=0, padx=(10,0), pady=10, sticky="nsew")
-        tree_frame.grid_columnconfigure(0, weight=1); tree_frame.grid_rowconfigure(0, weight=1)
-        self.tree = ttk.Treeview(tree_frame, columns=("category", "path"), show="headings"); self.tree.heading("category", text="Category Name"); self.tree.heading("path", text="Folder Path"); self.tree.grid(row=0, column=0, sticky="nsew")
-        scrollbar = ctk.CTkScrollbar(tree_frame, command=self.tree.yview); scrollbar.grid(row=0, column=1, sticky="ns"); self.tree.configure(yscrollcommand=scrollbar.set)
-        path_buttons_frame = ctk.CTkFrame(paths_frame, fg_color="transparent"); path_buttons_frame.grid(row=1, column=1, padx=10, pady=10, sticky="ns")
-        ctk.CTkButton(path_buttons_frame, text="Add", command=self.add_path, width=80, fg_color="#10B981", hover_color="#059669").pack(pady=4)
-        ctk.CTkButton(path_buttons_frame, text="Remove", command=self.remove_path, width=80, fg_color="#EF4444", hover_color="#DC2626").pack(pady=4)
-        ctk.CTkButton(path_buttons_frame, text="Edit", command=self.edit_path, width=80, fg_color="#3B82F6", hover_color="#2563EB").pack(pady=4)
-        server_actions_frame = ctk.CTkFrame(self); server_actions_frame.grid(row=2, column=0, padx=10, pady=5, sticky="ew")
-        server_actions_frame.grid_columnconfigure(2, weight=1)
-        self.start_button = ctk.CTkButton(server_actions_frame, text="Start Server", command=self.start_server, width=140); self.start_button.grid(row=0, column=0, padx=(10, 5), pady=10)
-        self.stop_button = ctk.CTkButton(server_actions_frame, text="Stop Server", command=self.stop_server, state="disabled", fg_color="#D32F2F", hover_color="#B71C1C", width=140); self.stop_button.grid(row=0, column=1, padx=5, pady=10)
-        self.status_label = ctk.CTkLabel(server_actions_frame, text="Status: Stopped", text_color="#F44336", font=("Segoe UI", 14, "bold")); self.status_label.grid(row=0, column=3, padx=10, pady=10, sticky="e")
-        log_frame = ctk.CTkFrame(self); log_frame.grid(row=3, column=0, padx=10, pady=(5, 10), sticky="nsew")
-        log_frame.grid_rowconfigure(0, weight=1); log_frame.grid_columnconfigure(0, weight=1)
-        self.log_text = ctk.CTkTextbox(log_frame, state='disabled', wrap='word', font=("Consolas", 12)); self.log_text.grid(row=0, column=0, sticky="nsew")
-        self.log_text.tag_config("hyperlink", foreground="#00aaff", underline=True); self.log_text.tag_bind("hyperlink", "<Enter>", self._show_hand_cursor); self.log_text.tag_bind("hyperlink", "<Leave>", self._show_arrow_cursor); self.log_text.tag_bind("hyperlink", "<Button-1>", self._open_link); self.hyperlink_map = {}
-
-    def style_treeview(self):
-        style = ttk.Style(); style.theme_use("default")
-        bg, fg, header_bg, sel_bg = "#2b2b2b", "white", "#3c3c3c", "#3470b6"
-        style.configure("Treeview", background=bg, foreground=fg, fieldbackground=bg, borderwidth=0); style.map('Treeview', background=[('selected', sel_bg)], foreground=[('selected', fg)])
-        style.configure("Treeview.Heading", background=header_bg, foreground=fg, relief="flat"); style.map("Treeview.Heading", background=[('active', '#555555')])
-        self.tree.tag_configure('oddrow', background="#343638"); self.tree.tag_configure('evenrow', background="#2b2b2b")
-    def _show_hand_cursor(self, event): self.config(cursor="hand2")
-    def _show_arrow_cursor(self, event): self.config(cursor="")
-    def _open_link(self, event):
-        if tag_name := next((t for t in self.log_text.tag_names(self.log_text.index(f"@{event.x},{event.y}")) if t.startswith("hlink-")), None):
-            if tag_name in self.hyperlink_map: webbrowser.open_new_tab(self.hyperlink_map[tag_name])
-    def setup_logging(self):
-        root_logger = logging.getLogger(); root_logger.handlers.clear(); root_logger.setLevel(logging.INFO)
-        formatter = logging.Formatter('%(asctime)s %(levelname)s: %(message)s', '%H:%M:%S'); text_handler = TextHandler(self.log_text, self)
-        text_handler.setFormatter(formatter); root_logger.addHandler(text_handler)
-    def process_log_queue(self):
-        try:
-            while True: logger = logging.getLogger((record := self.log_queue.get_nowait()).name); logger.handle(record)
-        except Exception: pass
-        self.after(100, self.process_log_queue)
-    def load_config_to_gui(self):
-        global APP_CONFIG; APP_CONFIG = load_or_create_config()
-        self.shop_title_var.set(APP_CONFIG.get("shop_title", DEFAULT_SHOP_TITLE)); self.port_var.set(str(APP_CONFIG.get("port", DEFAULT_PORT))); self.scan_on_startup_var.set(APP_CONFIG.get("scan_on_startup", False))
-        for item in self.tree.get_children(): self.tree.delete(item)
-        for i, (category, path) in enumerate(APP_CONFIG.get("paths", {}).items()): self.tree.insert("", tk.END, values=(category, path), tags=('evenrow' if i % 2 == 0 else 'oddrow',))
-    def save_gui_config(self, silent=False):
-        try:
-            current_config = load_or_create_config(); current_config["shop_title"] = self.shop_title_var.get(); current_config["port"] = int(self.port_var.get()); current_config["scan_on_startup"] = self.scan_on_startup_var.get()
-            current_config["paths"] = {self.tree.item(i)['values'][0]: self.tree.item(i)['values'][1] for i in self.tree.get_children()}
-            if save_config(current_config):
-                global APP_CONFIG; APP_CONFIG = current_config
-                if not silent: messagebox.showinfo("Success", "Configuration saved successfully!")
-            elif not silent: messagebox.showerror("Error", "Failed to save configuration.")
-        except ValueError:
-            if not silent: messagebox.showerror("Invalid Input", "Port must be a number.")
-        except Exception as e:
-            if not silent: messagebox.showerror("Error", f"An error occurred: {e}")
-    def add_path(self):
-        dialog = PathDialog(self, title="Add Path")
-        if dialog.result: tag = 'evenrow' if len(self.tree.get_children()) % 2 == 0 else 'oddrow'; self.tree.insert("", tk.END, values=dialog.result, tags=(tag,)); self.save_gui_config(silent=True)
-    def remove_path(self):
-        if not (selected_items := self.tree.selection()): return
-        if messagebox.askyesno("Confirm", "Remove selected path(s)?"):
-            for selected_item in selected_items: self.tree.delete(selected_item)
-            for i, item in enumerate(self.tree.get_children()): self.tree.item(item, tags=('evenrow' if i % 2 == 0 else 'oddrow',))
-            self.save_gui_config(silent=True)
-    def edit_path(self):
-        selected_items = self.tree.selection()
-        if not selected_items: messagebox.showwarning("No Selection", "Please select an item from the list to edit."); return
-        item_to_edit = selected_items[0]; category, path = self.tree.item(item_to_edit)['values']
-        dialog = PathDialog(self, title="Edit Path", initial_category=category, initial_path=path)
-        if dialog.result: self.tree.item(item_to_edit, values=dialog.result); self.save_gui_config(silent=True)
-    def start_server(self):
-        if self.server_process and self.server_process.is_alive(): logging.warning("Server is already running."); return
-        self.update_status("Starting...", "orange"); self.start_button.configure(state="disabled"); self.save_button_state("disabled")
-        current_config = load_or_create_config(); self.server_process = Process(target=run_flask_app, args=(current_config, self.log_queue), daemon=True)
-        self.server_process.start(); self.after(2000, self.check_server_status)
-    def check_server_status(self):
-        if self.server_process and self.server_process.is_alive(): self.update_status("Running", "green"); self.stop_button.configure(state="normal")
-        else:
-            self.update_status("Stopped", "red"); self.start_button.configure(state="normal")
-            self.save_button_state("normal"); self.stop_button.configure(state="disabled")
-            if self.server_process: logging.error("Server failed to start or stopped unexpectedly."); self.server_process = None
-    def stop_server(self):
-        if not (self.server_process and self.server_process.is_alive()): logging.warning("Server is not running."); self.check_server_status(); return
-        self.update_status("Stopping...", "orange"); self.stop_button.configure(state="disabled")
-        self.server_process.terminate(); self.server_process.join(timeout=2)
-        self.server_process = None; logging.info("Server has been stopped."); self.check_server_status()
-    def save_button_state(self, state): self.save_settings_btn.configure(state=state)
-    def update_status(self, text, color):
-        color_map = {"green": "#4CAF50", "red": "#F44336", "orange": "#FF9800"}
-        self.status_label.configure(text=f"Status: {text}", text_color=color_map.get(color, "white"))
-    def on_closing(self):
-        if self.server_process and self.server_process.is_alive():
-            if messagebox.askyesno("Exit", "The server is running. Stop server and exit?"): self.stop_server(); self.destroy()
-        else: self.destroy()
-
 class TextHandler(logging.Handler):
     def __init__(self, text_widget, app_gui_instance): super().__init__(); self.text_widget, self.app_gui = text_widget, app_gui_instance
     def emit(self, record):
@@ -526,38 +391,15 @@ class TextHandler(logging.Handler):
         self.text_widget.insert(tk.END, msg[last_end:] + '\n')
         self.text_widget.configure(state='disabled'); self.text_widget.see(tk.END)
 
-class PathDialog(ctk.CTkToplevel):
-    def __init__(self, parent, title=None, initial_category="", initial_path=""):
-        super().__init__(parent); self.transient(parent); self.title(title or "Path"); self.result = None; self.grid_columnconfigure(0, weight=1)
-        frame = ctk.CTkFrame(self, fg_color="transparent"); frame.grid(row=0, column=0, padx=10, pady=10, sticky="ew"); frame.grid_columnconfigure(1, weight=1)
-        ctk.CTkLabel(frame, text="Category:").grid(row=0, column=0, sticky="w", pady=5, padx=5); self.e1 = ctk.CTkEntry(frame); self.e1.grid(row=0, column=1, sticky="ew", columnspan=2, padx=5); self.e1.insert(0, initial_category)
-        ctk.CTkLabel(frame, text="Path:").grid(row=1, column=0, sticky="w", pady=5, padx=5); self.e2 = ctk.CTkEntry(frame, width=50); self.e2.grid(row=1, column=1, sticky="ew", padx=5); self.e2.insert(0, initial_path)
-        ctk.CTkButton(frame, text="Browse...", command=self.browse_path).grid(row=1, column=2, padx=5, sticky="e")
-        box = ctk.CTkFrame(self, fg_color="transparent"); box.grid(row=1, column=0, padx=10, pady=10, sticky="e"); ctk.CTkButton(box, text="OK", width=10, command=self.ok).pack(side=tk.RIGHT, padx=5); ctk.CTkButton(box, text="Cancel", width=10, command=self.cancel, fg_color="#555", hover_color="#666").pack(side=tk.RIGHT)
-        center_window(self, 500, 150); self.resizable(False, False); self.bind("<Return>", self.ok); self.bind("<Escape>", self.cancel); self.grab_set(); self.e1.focus_set(); self.wait_window(self)
-    def browse_path(self):
-        if path := filedialog.askdirectory(title="Select PKG Folder"): self.e2.delete(0, tk.END); self.e2.insert(0, path)
-    def ok(self, event=None):
-        category, path = self.e1.get().strip(), self.e2.get().strip()
-        if not (category and path): messagebox.showerror("Error", "Both fields are required.", parent=self); return
-        self.result = (category, path); self.destroy()
-    def cancel(self, event=None): self.destroy()
-
 # ===================================================================
-# PART 3: APPLICATION ENTRY POINT
+# PART 2: APPLICATION ENTRY POINT
 # ===================================================================
 if __name__ == '__main__':
     freeze_support()
     config = load_or_create_config()
-    if config.get("docker", False):
-        logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s]: %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
-        logging.info("Docker mode detected. Starting server without GUI...")
-        try: run_flask_app(config, log_queue=None)
-        except KeyboardInterrupt: logging.info("Server stopped by user (Ctrl+C).")
-        except Exception as e: logging.error(f"An unexpected error occurred: {e}", exc_info=True)
-    else:
-        gui = AppGUI()
-        gui.setup_logging()
-        logging.info("Application started. Configure and press 'Start Server'.")
-        gui.mainloop()
 
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s]: %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+    logging.info("Docker mode detected. Starting server without GUI...")
+    try: run_flask_app(config, log_queue=None)
+    except KeyboardInterrupt: logging.info("Server stopped by user (Ctrl+C).")
+    except Exception as e: logging.error(f"An unexpected error occurred: {e}", exc_info=True)
