@@ -374,23 +374,6 @@ def run_flask_app(config, log_queue=None):
     else: logging.info(" - Could not determine local network IP.")
     serve(app, host='0.0.0.0', port=port, _quiet=True)
 
-class TextHandler(logging.Handler):
-    def __init__(self, text_widget, app_gui_instance): super().__init__(); self.text_widget, self.app_gui = text_widget, app_gui_instance
-    def emit(self, record):
-        msg = record.getMessage()
-        if "Client disconnected while serving /static/background.mp4" in msg: return
-        self.text_widget.after(0, lambda: self.append_log(self.format(record)))
-    def append_log(self, msg):
-        self.text_widget.configure(state='normal'); last_end = 0
-        for match in re.finditer(r'https?://\S+', msg):
-            start, end = match.span(); url = match.group(0)
-            self.text_widget.insert(tk.END, msg[last_end:start])
-            link_start_index = self.text_widget.index(tk.END); link_tag = f"hlink-{link_start_index.replace('.', '-')}"
-            self.app_gui.hyperlink_map[link_tag] = url
-            self.text_widget.insert(tk.END, url, ("hyperlink", link_tag)); last_end = end
-        self.text_widget.insert(tk.END, msg[last_end:] + '\n')
-        self.text_widget.configure(state='disabled'); self.text_widget.see(tk.END)
-
 # ===================================================================
 # PART 2: APPLICATION ENTRY POINT
 # ===================================================================
