@@ -1,0 +1,12 @@
+[Unit]
+Description=PS5 PKG Virtual Shop
+After=network.target
+
+[Service]
+ExecStart=/bin/env bash /opt/ps5_pkg_virtual_shop/start_daemon.sh
+Type=forking
+Restart=always
+
+[Install]
+WantedBy=default.target
+RequiredBy=network.target
